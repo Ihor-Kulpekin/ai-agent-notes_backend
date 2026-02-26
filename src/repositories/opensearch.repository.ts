@@ -1,15 +1,15 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { Client } from '@opensearch-project/opensearch';
-import {
-  INDEX_NAME,
-  MEMORY_CONFIG,
-  VECTOR_DIMENSION,
-} from 'src/constants/vectore-store';
+import { INDEX_NAME, MEMORY_CONFIG } from 'src/constants/vectore-store';
 import { IAggBucket } from 'src/interfaces/vector-store/IVectorStoreServiceModels';
 import {
   Index_Request,
   Search_RequestBody,
 } from '@opensearch-project/opensearch/api/index.js';
+import {
+  indexCreationDocument,
+  indexLongTermMemoryCreation,
+} from 'src/constants/indexes-creating.constants';
 
 @Injectable()
 export class OpenSearchRepository implements OnModuleInit {
@@ -20,63 +20,9 @@ export class OpenSearchRepository implements OnModuleInit {
       node: process.env.OPENSEARCH_URL || 'http://localhost:9200',
     });
 
+    await this.createIndexIfNotExists(indexCreationDocument, INDEX_NAME);
     await this.createIndexIfNotExists(
-      {
-        settings: {
-          'index.knn': true,
-        },
-        mappings: {
-          properties: {
-            embedding: {
-              type: 'knn_vector',
-              dimension: VECTOR_DIMENSION,
-              method: {
-                name: 'hnsw',
-                space_type: 'cosinesimil',
-                engine: 'lucene',
-              },
-            },
-            content: {
-              type: 'text',
-            },
-            metadata: {
-              type: 'object',
-              enabled: true,
-            },
-          },
-        },
-      },
-      INDEX_NAME,
-    );
-    await this.createIndexIfNotExists(
-      {
-        index: MEMORY_CONFIG.ltmIndexName,
-        body: {
-          settings: {
-            'index.knn': true,
-            number_of_shards: 1,
-            number_of_replicas: 0,
-          },
-          mappings: {
-            properties: {
-              embedding: {
-                type: 'knn_vector',
-                dimension: MEMORY_CONFIG.embeddingDimension,
-                method: {
-                  name: 'hnsw',
-                  space_type: 'cosinesimil',
-                  engine: 'lucene',
-                },
-              },
-              content: { type: 'text' },
-              userId: { type: 'keyword' },
-              sessionId: { type: 'keyword' },
-              role: { type: 'keyword' },
-              timestamp: { type: 'long' },
-            },
-          },
-        },
-      },
+      indexLongTermMemoryCreation,
       MEMORY_CONFIG.ltmIndexName,
     );
     console.log('OpenSearch repository initialized');

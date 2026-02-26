@@ -15,8 +15,6 @@ export class LongTermMemoryService {
     private readonly openSearchRepository: OpenSearchRepository,
   ) {}
 
-  // ─── Public API ──────────────────────────────────────────────
-
   /**
    * Fire-and-forget: зберегти turn без блокування відповіді.
    */

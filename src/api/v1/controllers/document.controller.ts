@@ -55,6 +55,9 @@ export class DocumentController {
   @Delete(':filename')
   async deleteDocument(@Param('filename') filename: string) {
     await this.documentService.deleteDocument(filename);
-    return { success: true, data: { message: `Document "${filename}" deleted` } };
+    return {
+      success: true,
+      data: { message: `Document "${filename}" deleted` },
+    };
   }
 }
