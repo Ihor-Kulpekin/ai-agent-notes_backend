@@ -1,7 +1,7 @@
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { ChatOpenAI } from '@langchain/openai';
 
 export function createCompareTool(
@@ -17,16 +17,9 @@ export function createCompareTool(
       filename2: z.string().describe('The name of the second file'),
     }),
     func: async ({ filename1, filename2 }) => {
-      // Шукаємо chunks обох файлів
-      const docs1 = await vectorStore.similaritySearch(filename1, 10);
-      const docs2 = await vectorStore.similaritySearch(filename2, 10);
-
-      const relevantDocs1 = docs1.filter(
-        (doc) => doc.metadata.source === filename1,
-      );
-      const relevantDocs2 = docs2.filter(
-        (doc) => doc.metadata.source === filename2,
-      );
+      // Отримуємо всі chunks обох файлів напряму через filter
+      const relevantDocs1 = await vectorStore.getDocumentChunks(filename1);
+      const relevantDocs2 = await vectorStore.getDocumentChunks(filename2);
 
       if (relevantDocs1.length === 0) {
         return `Document "${filename1}" not found.`;
@@ -49,5 +42,5 @@ export function createCompareTool(
 
       return response.content as string;
     },
-  })
+  });
 }

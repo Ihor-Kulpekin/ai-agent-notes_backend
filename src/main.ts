@@ -1,5 +1,7 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './filters/all-exceptions.filter';
 import * as dotenv from 'dotenv';
 
 dotenv.config();
@@ -7,19 +9,20 @@ dotenv.config();
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  app.useGlobalFilters(new AllExceptionsFilter());
+
   app.setGlobalPrefix('api/v1');
 
   app.enableCors();
 
   const port = process.env.PORT || 3000;
 
-  const expressApp = app.getHttpAdapter().getInstance();
-  expressApp.get('/api/health', (_req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  });
   await app.listen(port);
 
-  console.log(`Server running on http://localhost:${port}`);
+  Logger.log(`Server running on http://localhost:${port}`, 'Bootstrap');
 }
 
-bootstrap();
+bootstrap().catch((err: Error) => {
+  Logger.error('Failed to start application:', err.message, 'Bootstrap');
+  process.exit(1);
+});

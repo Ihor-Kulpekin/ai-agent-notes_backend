@@ -1,4 +1,4 @@
-import { MEMORY_CONFIG, VECTOR_DIMENSION } from 'src/constants/vectore-store';
+import { MEMORY_CONFIG, VECTOR_DIMENSION } from 'src/constants/vector-store';
 
 export const indexCreationDocument = {
   settings: {
@@ -27,30 +27,27 @@ export const indexCreationDocument = {
 };
 
 export const indexLongTermMemoryCreation = {
-  index: MEMORY_CONFIG.ltmIndexName,
-  body: {
-    settings: {
-      'index.knn': true,
-      number_of_shards: 1,
-      number_of_replicas: 0,
-    },
-    mappings: {
-      properties: {
-        embedding: {
-          type: 'knn_vector',
-          dimension: MEMORY_CONFIG.embeddingDimension,
-          method: {
-            name: 'hnsw',
-            space_type: 'cosinesimil',
-            engine: 'lucene',
-          },
+  settings: {
+    'index.knn': true,
+    number_of_shards: 1,
+    number_of_replicas: 0,
+  },
+  mappings: {
+    properties: {
+      embedding: {
+        type: 'knn_vector',
+        dimension: MEMORY_CONFIG.embeddingDimension,
+        method: {
+          name: 'hnsw',
+          space_type: 'cosinesimil',
+          engine: 'lucene',
         },
-        content: { type: 'text' },
-        userId: { type: 'keyword' },
-        sessionId: { type: 'keyword' },
-        role: { type: 'keyword' },
-        timestamp: { type: 'long' },
       },
+      content: { type: 'text' },
+      userId: { type: 'keyword' },
+      sessionId: { type: 'keyword' },
+      role: { type: 'keyword' },
+      timestamp: { type: 'long' },
     },
   },
 };

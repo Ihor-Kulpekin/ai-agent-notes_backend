@@ -1,34 +1,38 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import type { Cache } from 'cache-manager';
 import { TokenCounterService } from './token-counter.service';
 import {
   IChatMessage,
   IConversationSummary,
 } from 'src/interfaces/memory/IMemoryModels';
-import { MEMORY_CONFIG } from 'src/constants/vectore-store';
+import { MEMORY_CONFIG } from 'src/constants/vector-store';
+import { MEMORY_SYSTEM_PROMPT } from 'src/constants/prompts';
 import { LlmService } from 'src/services/llm/LlmService';
 
 @Injectable()
 export class ShortTermMemoryService {
   private readonly logger = new Logger(ShortTermMemoryService.name);
 
-  private readonly windows = new Map<string, IChatMessage[]>();
-  private readonly summaries = new Map<string, IConversationSummary>();
+  private readonly TTL_SECONDS = 60 * 60 * 24; // 24 hours
 
   constructor(
+    @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private readonly tokenCounter: TokenCounterService,
     private readonly llmService: LlmService,
   ) {}
 
   async addMessage(userId: string, message: IChatMessage): Promise<void> {
-    const window = this.getOrCreateWindow(userId);
+    const window = await this.getOrCreateWindow(userId);
 
     if (!message.tokenCount) {
       message.tokenCount = this.tokenCounter.count(message.content);
     }
 
     window.push(message);
+    await this.setWindow(userId, window);
 
-    const currentTokens = this.getWindowTokenCount(userId);
+    const currentTokens = this.getWindowTokenCount(window);
     const threshold =
       MEMORY_CONFIG.maxWindowTokens * MEMORY_CONFIG.summarisationThreshold;
 
@@ -40,44 +44,76 @@ export class ShortTermMemoryService {
     }
   }
 
-  getSummary(userId: string): string | null {
-    return this.summaries.get(userId)?.content ?? null;
+  async getSummary(userId: string): Promise<string | null> {
+    const summary = await this.cacheManager.get<IConversationSummary>(
+      this.getSummaryKey(userId),
+    );
+    return summary?.content ?? null;
   }
 
-  getActiveWindow(userId: string): IChatMessage[] {
-    return [...(this.windows.get(userId) ?? [])];
+  async getActiveWindow(userId: string): Promise<IChatMessage[]> {
+    const window = await this.getOrCreateWindow(userId);
+    return [...window];
   }
 
   getSystemPrompt(): string {
-    return MEMORY_CONFIG.systemPrompt;
+    return MEMORY_SYSTEM_PROMPT;
   }
 
-  clear(userId: string): void {
-    this.windows.delete(userId);
-    this.summaries.delete(userId);
+  async clear(userId: string): Promise<void> {
+    await this.cacheManager.del(this.getWindowKey(userId));
+    await this.cacheManager.del(this.getSummaryKey(userId));
     this.logger.log(`[${userId}] STM cleared`);
   }
 
-  private getOrCreateWindow(userId: string) {
-    if (!this.windows.has(userId)) {
-      this.windows.set(userId, []);
-    }
-    return this.windows.get(userId)!;
+  private getWindowKey(userId: string): string {
+    return `stm:window:${userId}`;
   }
 
-  private getWindowTokenCount(userId: string): number {
-    return this.tokenCounter.countMessages(this.getOrCreateWindow(userId));
+  private getSummaryKey(userId: string): string {
+    return `stm:summary:${userId}`;
+  }
+
+  private async getOrCreateWindow(userId: string): Promise<IChatMessage[]> {
+    let window = await this.cacheManager.get<IChatMessage[]>(
+      this.getWindowKey(userId),
+    );
+    if (!window) {
+      window = [];
+      await this.setWindow(userId, window);
+    }
+    return window;
+  }
+
+  private async setWindow(
+    userId: string,
+    window: IChatMessage[],
+  ): Promise<void> {
+    // TTL в мілісекундах (cache-manager-redis-yet API)
+    await this.cacheManager.set(
+      this.getWindowKey(userId),
+      window,
+      this.TTL_SECONDS * 1000,
+    );
+  }
+
+  private getWindowTokenCount(window: IChatMessage[]): number {
+    return this.tokenCounter.countMessages(window);
   }
 
   private async summarise(userId: string): Promise<void> {
-    const window = this.getOrCreateWindow(userId);
+    const window = await this.getOrCreateWindow(userId);
     if (window.length < 4) return;
 
     const splitIndex = Math.ceil(window.length / 2);
     const toSummarise = window.slice(0, splitIndex);
     const remaining = window.slice(splitIndex);
 
-    const existingSummary = this.summaries.get(userId)?.content ?? '';
+    const existingSummaryObj =
+      await this.cacheManager.get<IConversationSummary>(
+        this.getSummaryKey(userId),
+      );
+    const existingSummary = existingSummaryObj?.content ?? '';
 
     try {
       const newSummary = await this.callSummarisationLlm(
@@ -85,17 +121,23 @@ export class ShortTermMemoryService {
         toSummarise,
       );
 
-      this.summaries.set(userId, {
+      const summaryObj: IConversationSummary = {
         content: newSummary,
         tokenCount: this.tokenCounter.count(newSummary),
         coveredUpTo: toSummarise[toSummarise.length - 1].timestamp,
-      });
+      };
 
-      this.windows.set(userId, remaining);
+      await this.cacheManager.set(
+        this.getSummaryKey(userId),
+        summaryObj,
+        this.TTL_SECONDS * 1000,
+      );
+
+      await this.setWindow(userId, remaining);
 
       this.logger.log(
         `[${userId}] Summarised ${toSummarise.length} msgs → ` +
-          `active: ${remaining.length}, summary tokens: ${this.summaries.get(userId)!.tokenCount}`,
+          `active: ${remaining.length}, summary tokens: ${summaryObj.tokenCount}`,
       );
     } catch (error) {
       this.logger.error(

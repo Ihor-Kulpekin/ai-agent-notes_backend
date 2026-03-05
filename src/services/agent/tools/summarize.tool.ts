@@ -1,7 +1,7 @@
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { ChatOpenAI } from '@langchain/openai';
 
 export function createSummarizeTool(
@@ -18,14 +18,8 @@ export function createSummarizeTool(
         .describe('The name of the file to summarize, e.g. "notes.txt"'),
     }),
     func: async ({ filename }) => {
-      // Шукаємо всі chunks цього файлу
-      // Використовуємо filename як запит — знайдемо chunks з цього джерела
-      const docs = await vectorStore.similaritySearch(filename, 10);
-
-      // Фільтруємо тільки chunks з потрібного файлу
-      const relevantDocs = docs.filter(
-        (doc) => doc.metadata.source === filename,
-      );
+      // Отримуємо всі chunks для вказаного файлу напряму через filter
+      const relevantDocs = await vectorStore.getDocumentChunks(filename);
 
       if (relevantDocs.length === 0) {
         return `Document "${filename}" not found. Please check the filename.`;
@@ -44,5 +38,5 @@ export function createSummarizeTool(
 
       return response.content as string;
     },
-  })
+  });
 }

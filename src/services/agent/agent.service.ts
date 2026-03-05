@@ -1,18 +1,21 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { buildAgentGraph } from './agent.graph';
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { LlmService } from 'src/services/llm/LlmService';
 import { IAgentResponse } from 'src/interfaces/agent/agent.models';
 import { MemoryOrchestratorService } from 'src/services/memory/memory-orchestrator.service';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class AgentService implements OnModuleInit {
+  private readonly logger = new Logger(AgentService.name);
   private graph: Awaited<ReturnType<typeof buildAgentGraph>>;
 
   constructor(
     private readonly llmService: LlmService,
     private readonly vectorStoreService: VectorStoreService,
     private readonly memory: MemoryOrchestratorService,
+    private readonly configService: ConfigService,
   ) {}
 
   onModuleInit() {
@@ -20,7 +23,7 @@ export class AgentService implements OnModuleInit {
     const llm = this.llmService.getModel();
     this.graph = buildAgentGraph(llm, this.vectorStoreService);
 
-    console.log('Agent graph initialized');
+    this.logger.log('Agent graph initialized');
   }
 
   /**
@@ -52,11 +55,13 @@ export class AgentService implements OnModuleInit {
 
     await this.memory.recordAssistantResponse(userId, result.answer, sessionId);
 
+    const openAiModel = this.configService.get<string>('openai.model') || '';
+
     return {
       answer: result.answer,
       sources: result.sources || [],
       steps: result.steps || [],
-      model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
+      model: openAiModel,
     };
   }
 }

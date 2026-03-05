@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
-import { OpenSearchRepository } from 'src/repositories/opensearch.repository';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { EmbeddedModule } from 'src/modules/embedded.module';
+import { OpenSearchModule } from 'src/modules/opensearch.module';
 
 @Module({
-  imports: [EmbeddedModule],
-  providers: [VectorStoreService, OpenSearchRepository],
+  imports: [EmbeddedModule, OpenSearchModule],
+  providers: [VectorStoreService],
   exports: [VectorStoreService],
 })
 export class VectorStoreModule {}

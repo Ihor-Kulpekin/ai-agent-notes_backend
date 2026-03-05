@@ -21,7 +21,7 @@ export class ChatService {
     };
   }
 
-  clearMemory(userId: string = 'default-user'): void {
-    this.memory.clearUserMemory(userId);
+  async clearMemory(userId: string = 'default-user'): Promise<void> {
+    await this.memory.clearUserMemory(userId);
   }
 }

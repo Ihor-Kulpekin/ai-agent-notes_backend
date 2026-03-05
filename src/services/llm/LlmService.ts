@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
@@ -6,11 +7,12 @@ import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 export class LlmService {
   private model: ChatOpenAI;
 
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
     this.model = new ChatOpenAI({
-      openAIApiKey: process.env.OPENAI_API_KEY,
-      modelName: process.env.OPENAI_MODEL || 'gpt-4o-mini',
-      temperature: 0.7,
+      openAIApiKey: this.configService.get<string>('openai.apiKey'),
+      modelName: this.configService.get<string>('openai.model'),
+      temperature: this.configService.get<number>('openai.temperature'),
+      maxRetries: 3,
     });
   }
 

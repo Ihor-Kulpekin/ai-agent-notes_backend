@@ -1,13 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { OpenAIEmbeddings } from '@langchain/openai';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class EmbeddedService {
   private embeddings: OpenAIEmbeddings;
 
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
     this.embeddings = new OpenAIEmbeddings({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey: this.configService.get<string>('openai.apiKey'),
       model: 'text-embedding-3-small',
     });
   }

@@ -2,7 +2,7 @@ import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import { Injectable } from '@nestjs/common';
 import { Document } from '@langchain/core/documents';
 import { UploadResultDto } from 'src/dto/document.dto';
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 
 @Injectable()
 export class DocumentService {

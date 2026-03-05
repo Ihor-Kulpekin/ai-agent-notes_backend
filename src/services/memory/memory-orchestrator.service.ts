@@ -24,8 +24,8 @@ export class MemoryOrchestratorService {
     const ltmResults = await this.searchLtm(userId, userMessage);
 
     // 2. Стан STM
-    const summary = this.stm.getSummary(userId);
-    const activeWindow = this.stm.getActiveWindow(userId);
+    const summary = await this.stm.getSummary(userId);
+    const activeWindow = await this.stm.getActiveWindow(userId);
 
     // 3. Зберегти в STM (може тригернути summarisation)
     await this.stm.addMessage(userId, {
@@ -102,8 +102,8 @@ export class MemoryOrchestratorService {
     return messages;
   }
 
-  clearUserMemory(userId: string): void {
-    this.stm.clear(userId);
+  async clearUserMemory(userId: string): Promise<void> {
+    await this.stm.clear(userId);
     this.logger.log(`[${userId}] All memory cleared`);
   }
 

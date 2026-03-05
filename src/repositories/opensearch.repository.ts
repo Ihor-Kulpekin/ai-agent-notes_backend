@@ -1,6 +1,7 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Client } from '@opensearch-project/opensearch';
-import { INDEX_NAME, MEMORY_CONFIG } from 'src/constants/vectore-store';
+import { INDEX_NAME, MEMORY_CONFIG } from 'src/constants/vector-store';
 import { IAggBucket } from 'src/interfaces/vector-store/IVectorStoreServiceModels';
 import {
   Index_Request,
@@ -10,29 +11,42 @@ import {
   indexCreationDocument,
   indexLongTermMemoryCreation,
 } from 'src/constants/indexes-creating.constants';
+import { ISearchRepository } from 'src/interfaces/repositories/ISearchRepository';
 
 @Injectable()
-export class OpenSearchRepository implements OnModuleInit {
+export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
   private openSearchClient: Client;
+  private readonly logger = new Logger(OpenSearchRepository.name);
+
+  constructor(private readonly configService: ConfigService) {}
 
   async onModuleInit() {
     this.openSearchClient = new Client({
-      node: process.env.OPENSEARCH_URL || 'http://localhost:9200',
+      node:
+        this.configService.get<string>('opensearch.url') ||
+        'http://localhost:9200',
     });
 
+    await this.initializeIndexes();
+    this.logger.log('OpenSearch repository initialized');
+  }
+
+  private async initializeIndexes(): Promise<void> {
     await this.createIndexIfNotExists(indexCreationDocument, INDEX_NAME);
     await this.createIndexIfNotExists(
       indexLongTermMemoryCreation,
       MEMORY_CONFIG.ltmIndexName,
     );
-    console.log('OpenSearch repository initialized');
   }
 
   /**
    * Bulk insert документів в індекс.
    */
-  async bulkIndex<T>(documents: T[], index = INDEX_NAME): Promise<void> {
-    const body: any[] = [];
+  async bulkIndex<T extends Record<string, any>>(
+    documents: T[],
+    index = INDEX_NAME,
+  ): Promise<void> {
+    const body: Record<string, any>[] = [];
 
     documents.forEach((doc) => {
       body.push({ index: { _index: index } });
@@ -42,7 +56,7 @@ export class OpenSearchRepository implements OnModuleInit {
     const response = await this.openSearchClient.bulk({ body });
 
     if (response.body.errors) {
-      console.error(
+      this.logger.error(
         'Bulk indexing errors:',
         JSON.stringify(response.body.items),
       );
@@ -64,19 +78,50 @@ export class OpenSearchRepository implements OnModuleInit {
     k: number,
     index = INDEX_NAME,
   ): Promise<T[]> {
-    const response = await this.openSearchClient.search({
-      index,
-      body: {
-        size: k,
-        query: {
-          knn: {
-            embedding: {
-              vector,
-              k,
-            },
-          },
+    return this.knnSearchWithFilter<T>(vector, k, [], [], index);
+  }
+
+  /**
+   * k-NN пошук по вектору з фільтрами.
+   */
+  async knnSearchWithFilter<T>(
+    vector: number[],
+    k: number,
+    filters: Record<string, unknown>[] = [],
+    sourceFields: string[] = [],
+    index = INDEX_NAME,
+  ): Promise<T[]> {
+    const query: Record<string, unknown> = {
+      knn: {
+        embedding: {
+          vector,
+          k,
         },
       },
+    };
+
+    const finalQuery: Record<string, unknown> =
+      filters.length > 0
+        ? {
+            bool: {
+              must: [query],
+              filter: filters,
+            },
+          }
+        : query;
+
+    const body: Record<string, unknown> = {
+      size: k,
+      query: finalQuery,
+    };
+
+    if (sourceFields.length > 0) {
+      body._source = sourceFields;
+    }
+
+    const response = await this.openSearchClient.search({
+      index,
+      body,
     });
 
     return response.body.hits.hits as T[];
@@ -106,7 +151,7 @@ export class OpenSearchRepository implements OnModuleInit {
     });
 
     await this.refresh(index);
-    console.log(`Deleted all chunks for "${filename}"`);
+    this.logger.log(`Deleted all chunks for "${filename}"`);
   }
 
   //TODO try to do unique for all indexes
@@ -162,7 +207,7 @@ export class OpenSearchRepository implements OnModuleInit {
       body,
     });
 
-    console.log(`Index "${INDEX_NAME}" created`);
+    this.logger.log(`Index "${INDEX_NAME}" created`);
   }
 
   private async refresh(indexName = INDEX_NAME): Promise<void> {

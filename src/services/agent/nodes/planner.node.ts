@@ -2,23 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { AgentStateType } from 'src/services/agent/agent.state';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
-const PLANNER_PROMPT = `You are a planning assistant. Analyze the user's question and decide the strategy.
-
-Reply with ONLY one word:
-- "search" — if the question asks about specific information or content from documents
-- "tools" — if the user wants to: summarize a document, compare documents, or list available documents
-- "direct" — if it's a greeting, general question, or something you can answer without documents
-
-Examples:
-- "What is written in my notes about X?" → search
-- "Summarize the file notes.txt" → tools
-- "Compare doc1.txt with doc2.txt" → tools
-- "What files do I have?" → tools
-- "Hello, how are you?" → direct
-- "What is TypeScript?" → direct
-- "Tell me more about that" → search (needs context from documents)
-- "Can you elaborate?" → search (follow-up likely needs documents)
-- "What else did I write about this topic?" → search`;
+import { PLANNER_PROMPT } from 'src/constants/prompts';
 
 /**
  * PLANNER node — аналізує питання і вирішує стратегію:

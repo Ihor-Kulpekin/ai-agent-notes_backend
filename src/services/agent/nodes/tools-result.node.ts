@@ -1,8 +1,13 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { AgentStateType } from 'src/services/agent/agent.state';
-import { HumanMessage, SystemMessage } from '@langchain/core/messages';
+import {
+  HumanMessage,
+  SystemMessage,
+  BaseMessage,
+} from '@langchain/core/messages';
+import { buildMessagesFromMemory } from 'src/services/agent/utils/message-builder';
 
-const TOOLS_RESULT_PROMPT = `You are a helpful assistant. Format the tool result into a clear, well-structured answer for the user. Answer in the same language as the question.`;
+import { TOOLS_RESULT_PROMPT } from 'src/constants/prompts';
 
 /**
  * TOOLS RESULT node — обробляє результат виконання tool і формує відповідь.
@@ -37,41 +42,16 @@ export function createToolsResultNode(llm: ChatOpenAI) {
 function buildMessages(
   state: AgentStateType,
   toolResult: string,
-): (SystemMessage | HumanMessage)[] {
+): BaseMessage[] {
   const hasMemory = state.memoryContext && state.memoryContext.length > 0;
 
   if (hasMemory) {
-    const memoryMessages = state.memoryContext;
-
-    // system prompt вже містить LTM + summary
-    const systemContent =
-      memoryMessages[0].content +
-      `\n\nAdditionally, format the tool result below into a clear answer.`;
-
-    const messages: (SystemMessage | HumanMessage)[] = [
-      new SystemMessage(systemContent),
-    ];
-
-    // Додаємо history (без system і без останнього user)
-    const history = memoryMessages.slice(1, -1);
-    for (const msg of history.slice(-4)) {
-      if (msg.role === 'user') {
-        messages.push(new HumanMessage(msg.content));
-      } else if (msg.role === 'assistant') {
-        messages.push(
-          new HumanMessage(`[Previous assistant response]: ${msg.content}`),
-        );
-      }
-    }
-
-    // Поточне питання + результат tool
-    messages.push(
-      new HumanMessage(
-        `User question: ${state.question}\n\nTool result:\n${toolResult}`,
-      ),
-    );
-
-    return messages;
+    return buildMessagesFromMemory(state, {
+      systemSuffix:
+        '\n\nAdditionally, format the tool result below into a clear answer.',
+      historyLimit: 4,
+      finalQuestionOverride: `User question: ${state.question}\n\nTool result:\n${toolResult}`,
+    });
   }
 
   // Fallback: без пам'яті

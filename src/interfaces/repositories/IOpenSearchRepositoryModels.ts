@@ -20,7 +20,7 @@ export interface IIndexConfig {
   settings?: Record<string, unknown>;
 }
 
-export interface IOpenSearchHit {
+export interface IMemorySearchHit {
   _source: {
     content: string;
     role: 'user' | 'assistant';

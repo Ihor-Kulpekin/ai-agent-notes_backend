@@ -1,4 +1,4 @@
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { AgentStateType } from 'src/services/agent/agent.state';
 
 /**

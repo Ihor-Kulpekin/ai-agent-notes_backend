@@ -2,26 +2,23 @@ import {
   Body,
   Controller,
   Delete,
-  HttpException,
-  HttpStatus,
   Post,
   Query,
+  UsePipes,
 } from '@nestjs/common';
 import { ChatService } from 'src/services/chat/chat.service';
-import { ChatRequestDto } from 'src/dto/chat.dto';
+import { chatRequestSchema } from 'src/dto/chat.dto';
+import type { ChatRequestDto } from 'src/dto/chat.dto';
+import { ZodValidationPipe } from 'src/pipes/zod-validation.pipe';
 
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
   @Post()
+  @UsePipes(new ZodValidationPipe(chatRequestSchema))
   async chat(@Body() body: ChatRequestDto) {
-    if (!body.message || body.message.trim().length === 0) {
-      throw new HttpException('Message is required', HttpStatus.BAD_REQUEST);
-    }
-
-    const userId = body.userId?.trim() || 'default-user';
-    const result = await this.chatService.ask(body.message.trim(), userId);
+    const result = await this.chatService.ask(body.message, body.userId);
 
     return {
       success: true,
@@ -34,8 +31,8 @@ export class ChatController {
    * Очищає всю пам'ять (STM + summary) для користувача.
    */
   @Delete('memory')
-  clearMemory(@Query('userId') userId?: string) {
-    this.chatService.clearMemory(userId || 'default-user');
+  async clearMemory(@Query('userId') userId?: string) {
+    await this.chatService.clearMemory(userId || 'default-user');
 
     return {
       success: true,

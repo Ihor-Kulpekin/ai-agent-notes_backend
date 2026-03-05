@@ -2,7 +2,7 @@ import { StateGraph, END, START } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ChatOpenAI } from '@langchain/openai';
 import { createAgentTools } from './agent.tools';
-import { VectorStoreService } from 'src/services/vectore-store/vector-store.service';
+import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { AgentState } from 'src/services/agent/agent.state';
 import { createPlannerNode } from 'src/services/agent/nodes/planner.node';
 import { createSearchNode } from 'src/services/agent/nodes/search.node';
@@ -31,7 +31,7 @@ export function buildAgentGraph(
     .addNode('planner', createPlannerNode(llm))
     .addNode('search', createSearchNode(vectorStore))
     .addNode('generator', createGeneratorNode(llm))
-    .addNode('tools_caller', createToolsCallerNode(llmWithTools as any))
+    .addNode('tools_caller', createToolsCallerNode(llmWithTools))
     .addNode('tools_executor', toolNode)
     .addNode('tools_result', createToolsResultNode(llm))
 
