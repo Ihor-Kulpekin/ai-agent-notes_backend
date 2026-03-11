@@ -55,15 +55,21 @@ export class MemoryOrchestratorService {
 
   async recordAssistantResponse(
     userId: string,
-    assistantMessage: string,
+    assistantMessage: string | undefined | null,
     sessionId: string = 'default',
   ): Promise<void> {
+    // Якщо AI повідомлення пусте (напр., тільки tool_calls без тексту) —
+    // форматуємо маркер замість того, щоб передавати undefined у embed()
+    const content = assistantMessage?.trim()
+      ? assistantMessage.trim()
+      : '[Tool Execution]';
+
     await this.stm.addMessage(userId, {
       role: 'assistant',
-      content: assistantMessage,
+      content,
       timestamp: Date.now(),
     });
-    this.ltm.persistTurn(userId, sessionId, 'assistant', assistantMessage);
+    this.ltm.persistTurn(userId, sessionId, 'assistant', content);
   }
 
   toMessageArray(

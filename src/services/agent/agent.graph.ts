@@ -1,6 +1,8 @@
 import { StateGraph, END, START } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { ChatOpenAI } from '@langchain/openai';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createAgentTools } from './agent.tools';
 import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
 import { AgentState } from 'src/services/agent/agent.state';
@@ -9,48 +11,77 @@ import { createSearchNode } from 'src/services/agent/nodes/search.node';
 import { createGeneratorNode } from 'src/services/agent/nodes/generator.node';
 import { createToolsCallerNode } from 'src/services/agent/nodes/tools-caller.node';
 import { createToolsResultNode } from 'src/services/agent/nodes/tools-result.node';
+import { createRelevanceNode } from 'src/services/agent/nodes/relevance.node';
+import { createGraderNode } from 'src/services/agent/nodes/grader.node';
+import { createQueryRewriterNode } from 'src/services/agent/nodes/query-rewriter.node';
 import { routeAfterPlan } from 'src/services/agent/router/agent.router';
+import { routeAfterGrading } from 'src/services/agent/router/grader.router';
 
 // ==================== BUILD GRAPH ====================
 
 export function buildAgentGraph(
-  llm: ChatOpenAI,
+  llm: BaseChatModel,
   vectorStore: VectorStoreService,
+  checkpointer: BaseCheckpointSaver,
+  fastLlm?: ChatOpenAI,
 ) {
-  // Створюємо tools
+  // fastLlm: for classification tasks (planner, grader, tools_result)
+  // if not provided — falls back to primary llm
+  const classifierLlm = fastLlm ?? llm;
+
   const tools = createAgentTools(llm, vectorStore);
 
-  // LLM з прив'язаними tools — він знає які tools доступні
-  const llmWithTools = llm.bindTools(tools);
-
-  // ToolNode — автоматично виконує tool який обрав LLM
+  // Safe cast for bindTools since BaseChatModel supports it,
+  // but typescript needs assurance it's defined.
+  // We use unknown first to satisfy ESLint's no-unsafe-* rules
+  const llmWithTools = (
+    llm as unknown as { bindTools: typeof ChatOpenAI.prototype.bindTools }
+  ).bindTools(tools);
   const toolNode = new ToolNode(tools);
 
   const graph = new StateGraph(AgentState)
-    // Вершини
-    .addNode('planner', createPlannerNode(llm))
+    // ── Вершини ──
+    .addNode('planner', createPlannerNode(classifierLlm)) // fast: classification
+    .addNode('query_rewriter', createQueryRewriterNode(classifierLlm)) // fast model suits here
     .addNode('search', createSearchNode(vectorStore))
-    .addNode('generator', createGeneratorNode(llm))
+    .addNode('relevance_check', createRelevanceNode())
+    .addNode('generator', createGeneratorNode(llm)) // primary: quality matters
+    .addNode('grader', createGraderNode(classifierLlm)) // fast: classification
     .addNode('tools_caller', createToolsCallerNode(llmWithTools))
     .addNode('tools_executor', toolNode)
-    .addNode('tools_result', createToolsResultNode(llm))
+    .addNode('tools_result', createToolsResultNode(classifierLlm as any)) // fast
 
-    // Ребра
+    // ── Ребра ──
     .addEdge(START, 'planner')
 
     .addConditionalEdges('planner', routeAfterPlan, {
-      search: 'search',
+      query_rewriter: 'query_rewriter',
       generator: 'generator',
       tools_caller: 'tools_caller',
     })
 
-    .addEdge('search', 'generator')
-    .addEdge('generator', END)
+    // RAG path: query_rewriter → search → relevance_check → generator → grader → END|retry
+    .addEdge('query_rewriter', 'search')
+    .addEdge('search', 'relevance_check')
+    .addEdge('relevance_check', 'generator')
+    .addConditionalEdges('grader', routeAfterGrading, {
+      pass: END,
+      retry: 'generator',
+    })
 
-    // Tools flow: caller → executor → result → END
+    // Direct path: generator → grader
+    .addEdge('generator', 'grader')
+
+    // Tools path: caller → executor → result → END
     .addEdge('tools_caller', 'tools_executor')
     .addEdge('tools_executor', 'tools_result')
     .addEdge('tools_result', END);
 
-  return graph.compile();
+  return graph.compile({
+    checkpointer,
+    // Human-in-the-Loop: зупинка ПЕРЕД виконанням tools.
+    // Граф pause-ується, клієнт отримує { status: 'pending_approval', pendingAction: {...} }.
+    // Клієнт повинен підтвердити через POST /chat/resume або відхилити через POST /chat/reject.
+    interruptBefore: ['tools_executor'],
+  });
 }

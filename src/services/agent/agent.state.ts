@@ -8,6 +8,12 @@ export const AgentState = Annotation.Root({
   // Рішення агента: 'search' | 'direct' | 'tools'
   plan: Annotation<string>,
 
+  // Оптимізований пошуковий запит (генерується Query Rewriter)
+  searchQuery: Annotation<string>({
+    reducer: (_, update) => update,
+    default: () => '',
+  }),
+
   // Документи знайдені в OpenSearch
   documents: Annotation<Document[]>,
 
@@ -22,7 +28,6 @@ export const AgentState = Annotation.Root({
 
   // Кроки які агент пройшов (для відстеження thinking process)
   steps: Annotation<string[]>({
-    // reducer — як оновлювати масив: додавати нові елементи до існуючих
     reducer: (current, update) => [...current, ...update],
     default: () => [],
   }),
@@ -32,11 +37,24 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
 
-  // ── NEW: контекст пам'яті від MemoryOrchestrator ──
+  // Контекст пам'яті від MemoryOrchestrator
   // Містить system prompt + LTM + summary + active window
   memoryContext: Annotation<Array<{ role: string; content: string }>>({
     reducer: (_, update) => update,
     default: () => [],
+  }),
+
+  // ── P1: Self-correction ──
+  // Лічильник спроб самокорекції (захист від нескінченних циклів)
+  retryCount: Annotation<number>({
+    reducer: (current, update) => current + update,
+    default: () => 0,
+  }),
+
+  // Зворотній зв'язок від grader до generator (пояснення чому відповідь не пройшла)
+  gradingFeedback: Annotation<string>({
+    reducer: (_, update) => update,
+    default: () => '',
   }),
 });
 

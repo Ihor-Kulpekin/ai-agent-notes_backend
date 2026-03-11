@@ -18,13 +18,21 @@ export class LongTermMemoryService {
 
   /**
    * Fire-and-forget: зберегти turn без блокування відповіді.
+   *
+   * @param content - якщо undefined/null/пустий — збереження тихо ігнорується
    */
   persistTurn(
     userId: string,
     sessionId: string,
     role: 'user' | 'assistant',
-    content: string,
+    content: string | undefined | null,
   ): void {
+    if (!content?.trim()) {
+      this.logger.debug(
+        `[${userId}] LTM persist skipped: empty content (${role})`,
+      );
+      return;
+    }
     this.persistTurnWithRetry(userId, sessionId, role, content).catch((err) =>
       this.logger.error(
         `[${userId}] LTM persist completely failed: ${(err as Error).message}`,
@@ -97,6 +105,13 @@ export class LongTermMemoryService {
     role: 'user' | 'assistant',
     content: string,
   ): Promise<void> {
+    // Додатковий запобіжник: не дозволяємо порожньому вмісту потрапити в embed()
+    if (!content?.trim()) {
+      this.logger.debug(
+        `[${userId}] indexTurn skipped: empty content (${role})`,
+      );
+      return;
+    }
     const embedding = await this.embed(content);
     const index = MEMORY_CONFIG.ltmIndexName;
     const data = {
@@ -112,6 +127,7 @@ export class LongTermMemoryService {
       },
       refresh: false,
     };
+
     await this.openSearchRepository.index(data);
 
     this.logger.debug(`[${userId}] LTM indexed(${role})`);

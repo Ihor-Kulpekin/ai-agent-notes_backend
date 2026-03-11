@@ -3,6 +3,9 @@ import { MEMORY_CONFIG, VECTOR_DIMENSION } from 'src/constants/vector-store';
 export const indexCreationDocument = {
   settings: {
     'index.knn': true,
+    // P2 Bottleneck fix: read replica for distributing kNN search queries
+    // between primary and replica shard — doubles read throughput
+    number_of_replicas: 1,
   },
   mappings: {
     properties: {

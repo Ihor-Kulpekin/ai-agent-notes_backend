@@ -53,7 +53,14 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
       body.push(doc);
     });
 
-    const response = await this.openSearchClient.bulk({ body });
+    const response = await this.openSearchClient.bulk({
+      body,
+      // P2 Bottleneck fix: 'wait_for' є частиною bulk request —
+      // чекаємо поки зміни стануть видимими для пошуку.
+      // На відміну від ручного this.refresh() це неблокуюча операція
+      // для паралельних uploads.
+      refresh: 'wait_for',
+    });
 
     if (response.body.errors) {
       this.logger.error(
@@ -131,6 +138,51 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
     const response = await this.openSearchClient.search({
       index,
       body: body as Search_RequestBody,
+    });
+
+    return response.body.hits.hits as T[];
+  }
+
+  /**
+   * Гібридний пошук: kNN (вектори) + BM25 (повнотекстовий).
+   * Використовує bool should для комбінації скорів.
+   */
+  async hybridSearch<T>(
+    queryText: string,
+    vector: number[],
+    k: number,
+    index = INDEX_NAME,
+  ): Promise<T[]> {
+    const fallbackBody = {
+      size: k,
+      query: {
+        bool: {
+          should: [
+            {
+              match: {
+                content: {
+                  query: queryText,
+                  boost: 1.0,
+                },
+              },
+            },
+            {
+              knn: {
+                embedding: {
+                  vector,
+                  k,
+                  boost: 2.0, // Надаємо перевагу семантиці, але текст теж важливий
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+
+    const response = await this.openSearchClient.search({
+      index,
+      body: fallbackBody as Search_RequestBody,
     });
 
     return response.body.hits.hits as T[];

@@ -1,6 +1,6 @@
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { AgentStateType } from 'src/services/agent/agent.state';
-import { ChatOpenAI } from '@langchain/openai';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { buildMessagesFromMemory } from 'src/services/agent/utils/message-builder';
 
 import { RAG_PROMPT, DIRECT_PROMPT } from 'src/constants/prompts';
@@ -9,7 +9,7 @@ import { Document } from '@langchain/core/documents';
 /**
  * GENERATOR node — генерує фінальну відповідь.
  */
-export function createGeneratorNode(llm: ChatOpenAI) {
+export function createGeneratorNode(llm: BaseChatModel) {
   return async (state: AgentStateType) => {
     const messages = buildMessages(state);
 

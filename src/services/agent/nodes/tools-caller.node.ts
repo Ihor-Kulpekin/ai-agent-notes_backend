@@ -9,7 +9,7 @@ import { Runnable } from '@langchain/core/runnables';
 
 import { TOOLS_CALLER_PROMPT } from 'src/constants/prompts';
 
-export function createToolsCallerNode(llmWithTools: Runnable<any, any>) {
+export function createToolsCallerNode(llmWithTools: Runnable) {
   return async (state: AgentStateType) => {
     const messages = buildMessages(state);
     const response = (await llmWithTools.invoke(messages)) as BaseMessage;

@@ -6,7 +6,8 @@ import { AgentStateType } from 'src/services/agent/agent.state';
  */
 export function createSearchNode(vectorStore: VectorStoreService) {
   return async (state: AgentStateType) => {
-    const documents = await vectorStore.similaritySearch(state.question, 4);
+    const query = state.searchQuery || state.question;
+    const documents = await vectorStore.similaritySearch(query, 4);
 
     const sources = documents.map((doc) => ({
       source: doc.metadata.source as string,

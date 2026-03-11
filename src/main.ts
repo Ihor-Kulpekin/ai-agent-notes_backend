@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './filters/all-exceptions.filter';
 import * as dotenv from 'dotenv';
@@ -8,6 +9,19 @@ dotenv.config();
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Step 1: Global Observability (LangSmith Tracing)
+  const configService = app.get(ConfigService);
+  if (configService.get('langsmith.apiKey')) {
+    process.env.LANGCHAIN_TRACING_V2 = 'true';
+    process.env.LANGCHAIN_API_KEY = configService.get('langsmith.apiKey');
+    process.env.LANGCHAIN_PROJECT = configService.get('langsmith.project');
+    process.env.LANGCHAIN_ENDPOINT = 'https://api.smith.langchain.com';
+    Logger.log(
+      `Global LangSmith tracing enabled — project: ${process.env.LANGCHAIN_PROJECT}`,
+      'Bootstrap',
+    );
+  }
 
   app.useGlobalFilters(new AllExceptionsFilter());
 

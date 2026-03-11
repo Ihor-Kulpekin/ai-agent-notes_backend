@@ -8,6 +8,8 @@ import { DocumentModule } from 'src/modules/document.module';
 import { AgentModule } from 'src/modules/agent.module';
 import { HealthModule } from 'src/modules/health.module';
 import { MemoryModule } from 'src/modules/memory.module';
+import { SocketModule } from 'src/modules/socket.module';
+import { AgentEventModule } from 'src/modules/agent-event.module';
 
 @Module({
   imports: [
@@ -15,6 +17,7 @@ import { MemoryModule } from 'src/modules/memory.module';
       isGlobal: true,
       load: [appConfig],
     }),
+    AgentEventModule,
     LlmModule,
     VectorStoreModule,
     DocumentModule,
@@ -22,6 +25,7 @@ import { MemoryModule } from 'src/modules/memory.module';
     ChatModule,
     HealthModule,
     MemoryModule,
+    SocketModule,
   ],
 })
 export class AppModule {}

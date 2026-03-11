@@ -30,6 +30,8 @@
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.16",
+    "@nestjs/websockets": "^11.1.16",
     "@opensearch-project/opensearch": "^3.5.1",
     "cache-manager": "^7.2.8",
     "cache-manager-redis-yet": "^5.1.5",
@@ -39,6 +41,7 @@
     "langsmith": "^0.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.3",
     "tiktoken": "^1.0.22",
     "zod": "^4.3.6"
   },
@@ -75,6 +78,9 @@
       "ts"
     ],
     "rootDir": "src",
+    "moduleNameMapper": {
+      "^src/(.*)$": "<rootDir>/$1"
+    },
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": "ts-jest"

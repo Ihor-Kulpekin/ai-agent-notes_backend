@@ -172,6 +172,6 @@ ${conversationBlock}`;
       userPrompt,
     );
 
-    return result as string;
+    return result;
   }
 }

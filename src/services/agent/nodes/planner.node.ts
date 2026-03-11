@@ -1,4 +1,4 @@
-import { ChatOpenAI } from '@langchain/openai';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 import { AgentStateType } from 'src/services/agent/agent.state';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 
@@ -10,7 +10,7 @@ import { PLANNER_PROMPT } from 'src/constants/prompts';
  * - 'tools' → потрібен спеціальний інструмент (summary, compare, list)
  * - 'direct' → відповідь без пошуку
  */
-export function createPlannerNode(llm: ChatOpenAI) {
+export function createPlannerNode(llm: BaseChatModel) {
   return async (state: AgentStateType) => {
     const messages: (SystemMessage | HumanMessage)[] = [
       new SystemMessage(PLANNER_PROMPT),
