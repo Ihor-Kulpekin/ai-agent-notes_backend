@@ -46,10 +46,12 @@ export class AgentService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    const llm = this.llmService.getModel();
+    const llmRaw = this.llmService.getModel();
+    const llmWithFallbacks = this.llmService.getModelWithFallbacks();
     const fastLlm = this.llmService.getFastModel();
     this.graph = buildAgentGraph(
-      llm,
+      llmRaw,
+      llmWithFallbacks,
       this.vectorStoreService,
       this.checkpointer,
       fastLlm,

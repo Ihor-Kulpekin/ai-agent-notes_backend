@@ -6,9 +6,9 @@ import {
   IChatMessage,
   IConversationSummary,
 } from 'src/interfaces/memory/IMemoryModels';
-import { MEMORY_CONFIG } from 'src/constants/vector-store';
 import { MEMORY_SYSTEM_PROMPT } from 'src/constants/prompts';
 import { LlmService } from 'src/services/llm/LlmService';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ShortTermMemoryService {
@@ -20,6 +20,7 @@ export class ShortTermMemoryService {
     @Inject(CACHE_MANAGER) private cacheManager: Cache,
     private readonly tokenCounter: TokenCounterService,
     private readonly llmService: LlmService,
+    private readonly configService: ConfigService,
   ) {}
 
   async addMessage(userId: string, message: IChatMessage): Promise<void> {
@@ -33,14 +34,22 @@ export class ShortTermMemoryService {
     await this.setWindow(userId, window);
 
     const currentTokens = this.getWindowTokenCount(window);
-    const threshold =
-      MEMORY_CONFIG.maxWindowTokens * MEMORY_CONFIG.summarisationThreshold;
+    const maxWindowTokens = this.configService.get<number>(
+      'stm.maxWindowTokens',
+      3000,
+    );
+    const summarisationThreshold = this.configService.get<number>(
+      'stm.summarisationThreshold',
+      0.8,
+    );
+
+    const threshold = maxWindowTokens * summarisationThreshold;
 
     if (currentTokens >= threshold) {
       this.logger.log(
-        `[${userId}] Window: ${currentTokens}/${MEMORY_CONFIG.maxWindowTokens} tokens → summarising`,
+        `[${userId}] Window: ${currentTokens}/${maxWindowTokens} tokens → summarising`,
       );
-      await this.summarise(userId);
+      await this.summarise(userId, maxWindowTokens);
     }
   }
 
@@ -101,11 +110,38 @@ export class ShortTermMemoryService {
     return this.tokenCounter.countMessages(window);
   }
 
-  private async summarise(userId: string): Promise<void> {
+  private async summarise(
+    userId: string,
+    maxWindowTokens: number,
+  ): Promise<void> {
     const window = await this.getOrCreateWindow(userId);
     if (window.length < 4) return;
 
-    const splitIndex = Math.ceil(window.length / 2);
+    // Token-aware splitting: accumulate oldest messages until we hit ~50% of the max limit
+    const targetTokensToSummarise = maxWindowTokens * 0.5;
+    let accumulatedTokens = 0;
+    let splitIndex = 0;
+
+    for (let i = 0; i < window.length; i++) {
+      const msg = window[i];
+      const preparedMessageForCountToken =
+        typeof msg.content === 'string'
+          ? msg.content
+          : JSON.stringify(msg.content);
+      const tokens =
+        msg.tokenCount || this.tokenCounter.count(preparedMessageForCountToken);
+
+      if (accumulatedTokens + tokens > targetTokensToSummarise && i > 0) {
+        break;
+      }
+      accumulatedTokens += tokens;
+      splitIndex++;
+    }
+
+    // Fallback in case of strange calculations
+    if (splitIndex === 0) splitIndex = 1;
+    if (splitIndex >= window.length) splitIndex = Math.floor(window.length / 2);
+
     const toSummarise = window.slice(0, splitIndex);
     const remaining = window.slice(splitIndex);
 

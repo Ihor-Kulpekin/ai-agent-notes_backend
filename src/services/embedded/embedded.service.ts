@@ -1,17 +1,13 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { OpenAIEmbeddings } from '@langchain/openai';
-import { ConfigService } from '@nestjs/config';
+import { EMBEDDINGS_MODEL_TOKEN } from 'src/modules/embedded.module';
 
 @Injectable()
 export class EmbeddedService {
-  private embeddings: OpenAIEmbeddings;
-
-  constructor(private readonly configService: ConfigService) {
-    this.embeddings = new OpenAIEmbeddings({
-      apiKey: this.configService.get<string>('openai.apiKey'),
-      model: 'text-embedding-3-small',
-    });
-  }
+  constructor(
+    @Inject(EMBEDDINGS_MODEL_TOKEN)
+    private readonly embeddings: OpenAIEmbeddings,
+  ) { }
 
   public async embedDocuments(texts: string[]) {
     return this.embeddings.embedDocuments(texts);
@@ -21,3 +17,4 @@ export class EmbeddedService {
     return this.embeddings.embedQuery(query);
   }
 }
+

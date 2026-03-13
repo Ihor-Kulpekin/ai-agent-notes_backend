@@ -1,8 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Injectable, Inject, Logger } from '@nestjs/common';
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import { ConfigService } from '@nestjs/config';
+import {
+  PRIMARY_LLM_TOKEN,
+  BACKUP_LLM_TOKEN,
+  FAST_LLM_TOKEN,
+} from 'src/modules/llm.module';
 
 /**
  * LlmService — управляє двома LLM інстанціями:
@@ -22,60 +27,41 @@ import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
 
-  // Use BaseChatModel since withFallbacks returns it
-  private primaryModel: BaseChatModel;
-  private fastModel: ChatOpenAI;
+  // Use Runnable for the fallback chain and ChatOpenAI for the raw model
+  private fallbackModel: BaseChatModel;
 
-  constructor(private readonly configService: ConfigService) {
-    // Primary model: high quality, but can fail or hit rate limits
-    const primary = new ChatOpenAI({
-      openAIApiKey: this.configService.get<string>('openai.apiKey'),
-      modelName: this.configService.get<string>('openai.model', 'gpt-4o'),
-      temperature: this.configService.get<number>('openai.temperature', 0.7),
-      maxRetries: 1, // Fail fast to switch to backup
-      timeout: 10000,
-    });
-
-    // Backup model for primary
-    const backup = new ChatOpenAI({
-      openAIApiKey: this.configService.get<string>('openai.apiKey'),
-      modelName: this.configService.get<string>(
-        'openai.fallbackModel',
-        'gpt-4o-mini',
-      ),
-      temperature: this.configService.get<number>('openai.temperature', 0.7),
-      maxRetries: 3,
-    });
-
+  constructor(
+    private readonly configService: ConfigService,
+    @Inject(PRIMARY_LLM_TOKEN) private readonly rawPrimaryModel: ChatOpenAI,
+    @Inject(BACKUP_LLM_TOKEN) private readonly backupModel: ChatOpenAI,
+    @Inject(FAST_LLM_TOKEN) private readonly fastModel: ChatOpenAI,
+  ) {
     // Step 2: LLM Resilience (Provider Fallback)
     // @ts-expect-error - RunnableWithFallbacks implements BaseChatModel runtime methods
-    this.primaryModel = primary.withFallbacks({
-      fallbacks: [backup],
-    });
-
-    // Fast model: for classification tasks (planner, grader, summarisation)
-    this.fastModel = new ChatOpenAI({
-      openAIApiKey: this.configService.get<string>('openai.apiKey'),
-      modelName: this.configService.get<string>(
-        'openai.fallbackModel',
-        'gpt-4o-mini',
-      ),
-      temperature: 0, // Детермінований для classification
-      maxRetries: 3,
+    this.fallbackModel = this.rawPrimaryModel.withFallbacks({
+      fallbacks: [this.backupModel],
     });
 
     this.logger.log(
       `LLM initialized: primary=${this.configService.get('openai.model')} (with fallback), ` +
-        `fast=${this.configService.get('openai.fallbackModel')}`,
+      `fast=${this.configService.get('openai.fallbackModel')}`,
     );
   }
 
   /**
-   * Основна модель для RAG-відповідей.
-   * Повертає Runnable (оскільки обгорнута у fallbacks), який сумісний з ChatOpenAI.
+   * Повертає модель обгорнуту у fallbacks для безпечної генерації (Generator).
    */
-  getModel(): BaseChatModel {
-    return this.primaryModel;
+  getModelWithFallbacks(): BaseChatModel {
+    return this.fallbackModel;
+  }
+
+  /**
+   * Основна сира ChatOpenAI модель.
+   * Необхідна для виклику специфічних методів, таких як bindTools(),
+   * оскільки RunnableWithFallbacks їх не підтримує.
+   */
+  getModel(): ChatOpenAI {
+    return this.rawPrimaryModel;
   }
 
   /**
@@ -87,7 +73,7 @@ export class LlmService {
   }
 
   async invoke(systemPrompt: string, userMessage: string): Promise<string> {
-    const response = await this.primaryModel.invoke([
+    const response = await this.fallbackModel.invoke([
       new SystemMessage(systemPrompt),
       new HumanMessage(userMessage),
     ]);
@@ -102,3 +88,4 @@ export class LlmService {
     return response.content as string;
   }
 }
+

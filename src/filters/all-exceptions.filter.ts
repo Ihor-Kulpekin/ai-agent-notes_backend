@@ -7,6 +7,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
+import { OpenAIException } from 'src/exceptions/openai.exception';
+import { OpenSearchException } from 'src/exceptions/opensearch.exception';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -17,40 +19,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    let status = HttpStatus.INTERNAL_SERVER_ERROR;
-    let message = 'Internal server error';
-
-    if (exception instanceof HttpException) {
-      status = exception.getStatus();
-      const res = exception.getResponse();
-      if (typeof res === 'object' && res !== null && 'message' in res) {
-        const body = res as Record<string, unknown>;
-        message =
-          typeof body.message === 'string'
-            ? body.message
-            : JSON.stringify(body.message);
-      } else {
-        message = exception.message;
-      }
-    } else if (exception instanceof Error) {
-      const errMessage = exception.message.toLowerCase();
-
-      // OpenAI errors
-      if (errMessage.includes('openai') || errMessage.includes('rate limit')) {
-        status = HttpStatus.SERVICE_UNAVAILABLE;
-        message = 'AI Service temporarily unavailable. Please try again later.';
-      }
-      // OpenSearch errors
-      else if (
-        errMessage.includes('opensearch') ||
-        errMessage.includes('connection')
-      ) {
-        status = HttpStatus.BAD_GATEWAY;
-        message = 'Search service connection issue. Our team is notified.';
-      } else {
-        message = exception.message;
-      }
-    }
+    const { status, message } = this.mapException(exception);
 
     this.logger.error(
       `[${request.method}] ${request.url} - Error: ${message}`,
@@ -65,4 +34,40 @@ export class AllExceptionsFilter implements ExceptionFilter {
       message,
     });
   }
+
+  private mapException(exception: unknown): { status: number; message: string } {
+    if (exception instanceof HttpException) {
+      if (exception instanceof OpenAIException || exception instanceof OpenSearchException) {
+        return { status: exception.getStatus(), message: exception.message };
+      }
+      const status = exception.getStatus();
+      const res = exception.getResponse();
+      let message = exception.message;
+      if (typeof res === 'object' && res !== null && 'message' in res) {
+        const body = res as Record<string, unknown>;
+        message = typeof body.message === 'string' ? body.message : JSON.stringify(body.message);
+      }
+      return { status, message };
+    }
+
+    if (exception instanceof Error) {
+      const msg = exception.message.toLowerCase();
+      if (msg.includes('openai') || msg.includes('rate limit')) {
+        return {
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          message: 'AI Service temporarily unavailable. Please try again later.',
+        };
+      }
+      if (msg.includes('opensearch') || msg.includes('connection')) {
+        return {
+          status: HttpStatus.BAD_GATEWAY,
+          message: 'Search service connection issue. Our team is notified.',
+        };
+      }
+      return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: exception.message };
+    }
+
+    return { status: HttpStatus.INTERNAL_SERVER_ERROR, message: 'Internal server error' };
+  }
 }
+

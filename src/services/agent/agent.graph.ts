@@ -20,23 +20,29 @@ import { routeAfterGrading } from 'src/services/agent/router/grader.router';
 // ==================== BUILD GRAPH ====================
 
 export function buildAgentGraph(
-  llm: BaseChatModel,
+  llmRaw: ChatOpenAI,
+  llmWithFallbacks: BaseChatModel,
   vectorStore: VectorStoreService,
   checkpointer: BaseCheckpointSaver,
   fastLlm?: ChatOpenAI,
 ) {
   // fastLlm: for classification tasks (planner, grader, tools_result)
   // if not provided — falls back to primary llm
-  const classifierLlm = fastLlm ?? llm;
+  const classifierLlm = fastLlm ?? llmRaw;
 
-  const tools = createAgentTools(llm, vectorStore);
+  const tools = createAgentTools(llmRaw, vectorStore);
 
-  // Safe cast for bindTools since BaseChatModel supports it,
-  // but typescript needs assurance it's defined.
-  // We use unknown first to satisfy ESLint's no-unsafe-* rules
-  const llmWithTools = (
-    llm as unknown as { bindTools: typeof ChatOpenAI.prototype.bindTools }
-  ).bindTools(tools);
+  // 1. В'яжемо інструменти до ОБИДВОХ сирих моделей
+  const primaryWithTools = llmRaw.bindTools(tools);
+
+  // Якщо fastLlm не передано, використовуємо llmRaw як єдиний варіант
+  const backupWithTools = fastLlm ? fastLlm.bindTools(tools) : primaryWithTools;
+
+  // 2. Об'єднуємо їх у єдиний стійкий Runnable (Bind First, Fallback Second)
+  const llmWithToolsAndFallbacks = primaryWithTools.withFallbacks({
+    fallbacks: [backupWithTools],
+  });
+
   const toolNode = new ToolNode(tools);
 
   const graph = new StateGraph(AgentState)
@@ -45,9 +51,9 @@ export function buildAgentGraph(
     .addNode('query_rewriter', createQueryRewriterNode(classifierLlm)) // fast model suits here
     .addNode('search', createSearchNode(vectorStore))
     .addNode('relevance_check', createRelevanceNode())
-    .addNode('generator', createGeneratorNode(llm)) // primary: quality matters
+    .addNode('generator', createGeneratorNode(llmWithFallbacks)) // primary: quality matters
     .addNode('grader', createGraderNode(classifierLlm)) // fast: classification
-    .addNode('tools_caller', createToolsCallerNode(llmWithTools))
+    .addNode('tools_caller', createToolsCallerNode(llmWithToolsAndFallbacks))
     .addNode('tools_executor', toolNode)
     .addNode('tools_result', createToolsResultNode(classifierLlm as any)) // fast
 
