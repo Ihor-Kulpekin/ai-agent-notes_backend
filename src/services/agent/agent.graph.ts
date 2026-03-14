@@ -30,15 +30,17 @@ export function buildAgentGraph(
   // if not provided — falls back to primary llm
   const classifierLlm = fastLlm ?? llmRaw;
 
-  const tools = createAgentTools(llmRaw, vectorStore);
+  // 1. Pass the appropriate safe LLMs to the tools, preventing crashes
+  // inside summarize or compare tools
+  const tools = createAgentTools(classifierLlm as BaseChatModel, llmWithFallbacks, vectorStore);
 
-  // 1. В'яжемо інструменти до ОБИДВОХ сирих моделей
+  // 2. В'яжемо інструменти до ОБИДВОХ сирих моделей
   const primaryWithTools = llmRaw.bindTools(tools);
 
   // Якщо fastLlm не передано, використовуємо llmRaw як єдиний варіант
   const backupWithTools = fastLlm ? fastLlm.bindTools(tools) : primaryWithTools;
 
-  // 2. Об'єднуємо їх у єдиний стійкий Runnable (Bind First, Fallback Second)
+  // 3. Об'єднуємо їх у єдиний стійкий Runnable (Bind First, Fallback Second)
   const llmWithToolsAndFallbacks = primaryWithTools.withFallbacks({
     fallbacks: [backupWithTools],
   });

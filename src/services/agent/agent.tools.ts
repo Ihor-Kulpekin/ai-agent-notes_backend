@@ -5,12 +5,13 @@ import { createCompareTool } from 'src/services/agent/tools/compare.tool';
 import { createListTool } from 'src/services/agent/tools/create-list.tool';
 
 export function createAgentTools(
-  llm: BaseChatModel,
+  fastLlm: BaseChatModel,
+  llmWithFallbacks: BaseChatModel,
   vectorStore: VectorStoreService,
 ) {
   return [
-    createSummarizeTool(llm as any, vectorStore),
-    createCompareTool(llm as any, vectorStore),
+    createSummarizeTool(fastLlm, vectorStore), // Light tasks can use fastLlm
+    createCompareTool(llmWithFallbacks, vectorStore), // Compare might need more reasoning, use fallback-protected LLM
     createListTool(vectorStore),
   ];
 }

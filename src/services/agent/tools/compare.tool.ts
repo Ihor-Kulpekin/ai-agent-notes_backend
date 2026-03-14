@@ -2,10 +2,10 @@ import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import { VectorStoreService } from 'src/services/vector-store/vector-store.service';
-import { ChatOpenAI } from '@langchain/openai';
+import { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
 export function createCompareTool(
-  llm: ChatOpenAI,
+  llm: BaseChatModel,
   vectorStore: VectorStoreService,
 ) {
   return new DynamicStructuredTool({

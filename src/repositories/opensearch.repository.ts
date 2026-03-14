@@ -18,7 +18,7 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
   private openSearchClient: Client;
   private readonly logger = new Logger(OpenSearchRepository.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   async onModuleInit() {
     this.openSearchClient = new Client({
@@ -89,7 +89,7 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
   }
 
   /**
-   * k-NN пошук по вектору з фільтрами.
+   * k-NN пошук по вектору з фільтрами (Efficient k-NN Pre-filtering).
    */
   async knnSearchWithFilter<T>(
     vector: number[],
@@ -98,28 +98,26 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
     sourceFields: string[] = [],
     index = INDEX_NAME,
   ): Promise<T[]> {
-    const query: Record<string, unknown> = {
-      knn: {
-        embedding: {
-          vector,
-          k,
-        },
-      },
+    const knnEmbedding: Record<string, unknown> = {
+      vector,
+      k,
     };
 
-    const finalQuery: Record<string, unknown> =
-      filters.length > 0
-        ? {
-            bool: {
-              must: [query],
-              filter: filters,
-            },
-          }
-        : query;
+    if (filters.length > 0) {
+      knnEmbedding.filter = {
+        bool: {
+          must: filters,
+        },
+      };
+    }
 
     const body: Record<string, unknown> = {
       size: k,
-      query: finalQuery,
+      query: {
+        knn: {
+          embedding: knnEmbedding,
+        },
+      },
     };
 
     if (sourceFields.length > 0) {
@@ -145,7 +143,7 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
 
   /**
    * Гібридний пошук: kNN (вектори) + BM25 (повнотекстовий).
-   * Використовує bool should для комбінації скорів.
+   * Використовує мануальний Reciprocal Rank Fusion (RRF) замість лінійної комбінації скорів.
    */
   async hybridSearch<T>(
     queryText: string,
@@ -153,39 +151,72 @@ export class OpenSearchRepository implements OnModuleInit, ISearchRepository {
     k: number,
     index = INDEX_NAME,
   ): Promise<T[]> {
-    const fallbackBody = {
-      size: k,
+    // 1. Keyword search (BM25)
+    const textQuery = {
+      size: k * 2, // Отримуємо більше результатів для кращого fusion
       query: {
-        bool: {
-          should: [
-            {
-              match: {
-                content: {
-                  query: queryText,
-                  boost: 1.0,
-                },
-              },
-            },
-            {
-              knn: {
-                embedding: {
-                  vector,
-                  k,
-                  boost: 2.0, // Надаємо перевагу семантиці, але текст теж важливий
-                },
-              },
-            },
-          ],
+        match: {
+          content: queryText,
         },
       },
     };
 
-    const response = await this.openSearchClient.search({
-      index,
-      body: fallbackBody as Search_RequestBody,
+    // 2. Semantic search (kNN)
+    const knnQuery = {
+      size: k * 2,
+      query: {
+        knn: {
+          embedding: {
+            vector,
+            k: k * 2,
+          },
+        },
+      },
+    };
+
+    const [textResponse, knnResponse] = await Promise.all([
+      this.openSearchClient.search({ index, body: textQuery as Search_RequestBody }),
+      this.openSearchClient.search({ index, body: knnQuery as Search_RequestBody }),
+    ]);
+
+    const textHits = textResponse.body.hits.hits as { _id: string; _source: any }[];
+    const knnHits = knnResponse.body.hits.hits as { _id: string; _source: any }[];
+
+    // 3. Reciprocal Rank Fusion
+    const rrfScores = new Map<string, { doc: any; rrfScore: number }>();
+    const RRF_CONSTANT = 60; // Стандартна константа для RRF
+
+    textHits.forEach((hit, rank) => {
+      rrfScores.set(hit._id, {
+        doc: hit,
+        rrfScore: 1.0 / (RRF_CONSTANT + rank + 1), // rank is 0-indexed
+      });
     });
 
-    return response.body.hits.hits as T[];
+    knnHits.forEach((hit, rank) => {
+      const existing = rrfScores.get(hit._id);
+      const score = 1.0 / (RRF_CONSTANT + rank + 1);
+      if (existing) {
+        existing.rrfScore += score;
+      } else {
+        rrfScores.set(hit._id, {
+          doc: hit,
+          rrfScore: score,
+        });
+      }
+    });
+
+    // 4. Sort and return top-K
+    const fusedResults = Array.from(rrfScores.values())
+      .sort((a, b) => b.rrfScore - a.rrfScore)
+      .slice(0, k)
+      .map((item) => {
+        // Замінюємо оригінальний score на rrfScore для подальшого використання
+        const docWithScore = { ...item.doc, _score: item.rrfScore };
+        return docWithScore as T;
+      });
+
+    return fusedResults;
   }
 
   async deleteBySource(

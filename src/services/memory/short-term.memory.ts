@@ -21,7 +21,7 @@ export class ShortTermMemoryService {
     private readonly tokenCounter: TokenCounterService,
     private readonly llmService: LlmService,
     private readonly configService: ConfigService,
-  ) {}
+  ) { }
 
   async addMessage(userId: string, message: IChatMessage): Promise<void> {
     const window = await this.getOrCreateWindow(userId);
@@ -62,6 +62,28 @@ export class ShortTermMemoryService {
 
   async getActiveWindow(userId: string): Promise<IChatMessage[]> {
     const window = await this.getOrCreateWindow(userId);
+
+    // Hard Limit Enforcement
+    const maxWindowTokens = this.configService.get<number>(
+      'stm.maxWindowTokens',
+      3000,
+    );
+    let currentTokens = this.getWindowTokenCount(window);
+    let modified = false;
+
+    // Shift oldest messages if the window exceeds the hard capability limit,
+    // ensuring we never send an overflowing context payload to the LLM.
+    while (currentTokens > maxWindowTokens && window.length > 1) {
+      window.shift(); // Remove the oldest message
+      currentTokens = this.getWindowTokenCount(window);
+      modified = true;
+    }
+
+    if (modified) {
+      await this.setWindow(userId, window);
+      this.logger.warn(`[${userId}] Hard Cap limit reached: forced window token trim to ${currentTokens} tokens.`);
+    }
+
     return [...window];
   }
 
@@ -173,7 +195,7 @@ export class ShortTermMemoryService {
 
       this.logger.log(
         `[${userId}] Summarised ${toSummarise.length} msgs → ` +
-          `active: ${remaining.length}, summary tokens: ${summaryObj.tokenCount}`,
+        `active: ${remaining.length}, summary tokens: ${summaryObj.tokenCount}`,
       );
     } catch (error) {
       this.logger.error(
