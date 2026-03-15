@@ -5,6 +5,7 @@ import { IIndexDocumentData } from 'src/interfaces/repositories/IOpenSearchRepos
 import { IOpenSearchHit } from 'src/interfaces/vector-store/IVectorStoreServiceModels';
 import { INDEX_NAME } from 'src/constants/vector-store';
 import type { ISearchRepository } from 'src/interfaces/repositories/ISearchRepository';
+import { strategicReorder } from './utils/strategic-reorder';
 
 @Injectable()
 export class VectorStoreService {
@@ -49,7 +50,7 @@ export class VectorStoreService {
       index,
     );
 
-    return hits.map(
+    return strategicReorder(hits).map(
       (hit) =>
         new Document({
           pageContent: hit._source.content,
